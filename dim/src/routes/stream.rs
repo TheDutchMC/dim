@@ -56,7 +56,6 @@ pub mod filters {
         conn: DbConnection,
         state: StateManager,
         stream_tracking: StreamTracking,
-        log: slog::Logger,
     ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         #[derive(Deserialize)]
         struct QueryArgs {
@@ -70,28 +69,18 @@ pub mod filters {
             .and(with_state::<DbConnection>(conn))
             .and(with_state::<StateManager>(state))
             .and(with_state::<StreamTracking>(stream_tracking))
-            .and(with_state::<slog::Logger>(log))
             .and_then(
                 |id: i64,
                  QueryArgs { gid }: QueryArgs,
                  auth: Auth,
                  conn: DbConnection,
                  state: StateManager,
-                 stream_tracking: StreamTracking,
-                 log: slog::Logger| async move {
+                 stream_tracking: StreamTracking| async move {
                     let gid = gid.and_then(|x| Uuid::parse_str(x.as_str()).ok());
 
                     warp_unwrap!(
-                        super::return_virtual_manifest(
-                            state,
-                            stream_tracking,
-                            auth,
-                            conn,
-                            log,
-                            id,
-                            gid
-                        )
-                        .await
+                        super::return_virtual_manifest(state, stream_tracking, auth, conn, id, gid)
+                            .await
                     )
                 },
             )
@@ -274,7 +263,6 @@ pub async fn return_virtual_manifest(
     stream_tracking: StreamTracking,
     _auth: Auth,
     conn: DbConnection,
-    log: slog::Logger,
     id: i64,
     gid: Option<Uuid>,
 ) -> Result<impl warp::Reply, errors::StreamingErrors> {
@@ -323,7 +311,7 @@ pub async fn return_virtual_manifest(
         ..Default::default()
     };
 
-    let profile_chain = get_profile_for(&log, StreamType::Video, &ctx);
+    let profile_chain = get_profile_for(StreamType::Video, &ctx);
     let video = state.create(profile_chain, ctx).await?;
 
     // FIXME: Stop hardcoding a fps of 24
@@ -417,7 +405,7 @@ pub async fn return_virtual_manifest(
         };
 
         // FIXME: remove this panic
-        let profile_chain = get_profile_for(&log, StreamType::Video, &ctx);
+        let profile_chain = get_profile_for(StreamType::Video, &ctx);
         debug_assert!(!profile_chain.is_empty());
 
         let video = state.create(profile_chain, ctx).await?;
@@ -482,7 +470,7 @@ pub async fn return_virtual_manifest(
             ..Default::default()
         };
 
-        let profile = get_profile_for(&log, StreamType::Audio, &ctx);
+        let profile = get_profile_for(StreamType::Audio, &ctx);
         let audio = state.create(profile, ctx).await?;
 
         stream_tracking
@@ -559,7 +547,7 @@ pub async fn return_virtual_manifest(
         let mime = "text/vtt";
         let codec = "vtt";
 
-        let profile_chain = get_profile_for(&log, StreamType::Subtitle, &ctx);
+        let profile_chain = get_profile_for(StreamType::Subtitle, &ctx);
         let subtitle = state.create(profile_chain, ctx).await?;
 
         stream_tracking
